@@ -40,16 +40,18 @@ function loadstorage()
 end
 loadstorage()
 
+local function show_wheel_info()
+    minetest.display_chat_message("Trundlewheel is " .. ((paused and "paused" or "active")))
+    minetest.display_chat_message("Each rotation: " .. rotationdist)
+    minetest.display_chat_message(string.format(
+                "Total distance this rotation: %.3f", totaldist))
+    minetest.display_chat_message(string.format("Grand total distance: %.3f", grandtotaldist))
+end
+
 minetest.register_chatcommand("wheel_info", {
     params = "",
     description = "Print trundlewheel info",
-    func = function(param)
-        minetest.display_chat_message("Trundlewheel is " .. ((paused and "paused" or "active")))
-        minetest.display_chat_message("Each rotation: " .. rotationdist)
-        minetest.display_chat_message(string.format(
-                    "Total distance this rotation: %.3f", totaldist))
-        minetest.display_chat_message(string.format("Grand total distance: %.3f", grandtotaldist))
-    end
+    func = show_wheel_info
 })
 
 local function printconf()
@@ -113,16 +115,6 @@ minetest.register_chatcommand("wheel_conf", {
             if newval then
                 setbool("vertical", param)
                 vertical = getbool(modstorage, "vertical", "true")
-                --[[
-                if newval == "true" or newval == "1" or newval == "on" then
-                    vertical = true
-                    modstorage:set_string("vertical", "true")
-                elseif newval == "false" or newval == "0" or newval == "off" then
-                    vertical = false
-                    modstorage:set_string("vertical", "false")
-                else
-                    minetest.display_chat_message("Vertical setting must be one of 'true', '1', 'on', 'false', '0', or 'off'")
-                end--]]
                 return
             end
 
@@ -181,11 +173,54 @@ minetest.register_chatcommand("wheel_reset", {
     end
 })
 
--- TODO NYI
+minetest.register_chatcommand("wheels", {
+    params = "",
+    description = "List all your saved trundlewheels",
+    func = function(param)
+        local wheels = minetest.deserialize(
+                modstorage:get("saved_wheels")) or {}
+        for k, _ in pairs(wheels) do
+            if k == "" then k = '<trundle wheel with no name>' end
+            minetest.display_chat_message(k)
+        end
+    end
+})
+
+minetest.register_chatcommand("wheel_delete", {
+    params = "",
+    description = "Delete a named wheel",
+    func = function(param)
+        local wheels = minetest.deserialize(
+                modstorage:get("saved_wheels")) or {}
+        wheels[param] = nil
+        local anykeys = false
+        for k,v in pairs(wheels) do
+            anykeys = true
+            break
+        end
+        if anykeys then
+            modstorage:set_string("saved_wheels", minetest.serialize(wheels))
+        else
+            modstorage:set_string("saved_wheels", nil)
+        end
+    end
+})
+
 minetest.register_chatcommand("wheel_save", {
     params = "wheel",
-    description = "Save your wheel info to storage for later resumption",
+    description = "Save your wheel info to storage for later resumption: rotation distance, total distance, grand total distance and paused status.",
     func = function(param)
+        local wheels = minetest.deserialize(
+                modstorage:get("saved_wheels")) or {}
+        local current_wheel = {
+            rotationdist = rotationdist,
+            totaldist = totaldist,
+            grandtotaldist = grandtotaldist,
+            paused = paused,
+        }
+        wheels[param] = current_wheel
+
+        modstorage:set_string("saved_wheels", minetest.serialize(wheels))
     end
 })
 
@@ -193,6 +228,17 @@ minetest.register_chatcommand("wheel_load", {
     params = "wheel",
     description = "Load a previously saved wheel from storage",
     func = function(param)
+        local wheels = minetest.deserialize(
+                modstorage:get("saved_wheels")) or {}
+        if wheels[param] == nil then
+            minetest.display_chat_message("No such wheel! For a list use .wheels")
+            return
+        end
+        rotationdist = wheels[param].rotationdist
+        totaldist = wheels[param].totaldist
+        grandtotaldist = wheels[param].totaldist
+        paused = wheels[param].paused
+        show_wheel_info()
     end
 })
 
