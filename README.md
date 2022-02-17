@@ -25,6 +25,11 @@ trundle wheels to keep different numbers for different servers. The trundle
 wheel will also track your vertical movement by default - this will be discussed
 further in the reference.
 
+An note on teleportation: You should probably pause your trundlewheel before
+teleporting, or it's going to start clicking very quickly until it accounts for
+your entire teleportation distance. The trundle wheel cannot distinguish
+footsteps from teleportation or travelling in vehicles.
+
 ### Quantities of the trundle wheel
 
 The trundle wheel has four main quantities:
