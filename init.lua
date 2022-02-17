@@ -1,3 +1,4 @@
+--TODO: Installation instructions for sound files
 local DEBUG = false
 
 local prevpos = nil
@@ -211,23 +212,30 @@ minetest.register_chatcommand("wheels", {
     end
 })
 
+local function wheel_delete(param)
+    local wheels = minetest.deserialize(
+            modstorage:get("saved_wheels")) or {}
+    wheels[param] = nil
+    local anykeys = false
+    for k,v in pairs(wheels) do
+        anykeys = true
+        break
+    end
+    if anykeys then
+        modstorage:set_string("saved_wheels", minetest.serialize(wheels))
+    else
+        modstorage:set_string("saved_wheels", nil)
+    end
+
+end
+
 minetest.register_chatcommand("wheel_delete", {
     params = "",
     description = "Delete a named wheel",
     func = function(param)
-        local wheels = minetest.deserialize(
-                modstorage:get("saved_wheels")) or {}
-        wheels[param] = nil
-        local anykeys = false
-        for k,v in pairs(wheels) do
-            anykeys = true
-            break
-        end
-        if anykeys then
-            modstorage:set_string("saved_wheels", minetest.serialize(wheels))
-        else
-            modstorage:set_string("saved_wheels", nil)
-        end
+        wheel_delete(param)
+        minetest.display_chat_message(string.format(
+            "Deleted wheel '%s'", param))
     end
 })
 
@@ -380,6 +388,8 @@ fields = {
 --]]
 
 --TODO: Select sets wheel_name
+--TODO: Save updates lists
+--TODO: Delete wheel should update the list
 minetest.register_on_formspec_input(function(formname, fields)
     if formname ~= "trundlewheel:wheel_gui" then return end
 
@@ -389,6 +399,22 @@ minetest.register_on_formspec_input(function(formname, fields)
     if fields.wheel_list ~= nil then
         local evt = minetest.explode_table_event(fields.wheel_list)
         if evt.type ~= "CHG" then return end
+        local wheels = minetest.deserialize(
+                modstorage:get("saved_wheels")) or {}
+
+        local idx = 1
+        local wheels_by_idx = {}
+        for k,_ in pairs(wheels) do
+            local key = k
+            if key == "" then key = '<trundle wheel with no name>' end
+            key = minetest.formspec_escape(key)
+            wheels_by_idx[idx] = key
+        end
+
+        if wheels_by_idx == {} then
+            -- No wheels anyway; do nothing
+            minetest.log("info", "No wheels!")
+        end
 
         -- TODO: get list from storage, set wheel_name, (set selected index?)
         return
@@ -425,9 +451,18 @@ minetest.register_on_formspec_input(function(formname, fields)
 
     -- Buttons
     if fields.update ~= nil then
-        totaldist = fields.totaldist
-        rotationdist = fields.rotationdist
-        grandtotaldist = fields.grandtotaldist
+        local res = tonumber(fields.totaldist)
+        if res and res > 0 and res < rotationdist then
+            totaldist = res
+        end
+
+        res = tonumber(fields.rotationdist)
+        if res and res >= 0 then rotationdist = res end
+
+        res = tonumber(fields.grandtotaldist)
+        if res and res >= 0 then grandtotaldist = res end
+
+
         -- Vertical and paused: Already handled in their own events
         return
     elseif fields.save ~= nil then
@@ -435,6 +470,9 @@ minetest.register_on_formspec_input(function(formname, fields)
         return
     elseif fields.load ~= nil then
         wheel_load(fields.wheel_name)
+        return
+    elseif fields.delete ~= nil then
+        wheel_delete(fields.wheel_name)
         return
     end
 
