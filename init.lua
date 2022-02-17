@@ -215,6 +215,7 @@ minetest.register_chatcommand("wheels", {
 local function wheel_delete(param)
     local wheels = minetest.deserialize(
             modstorage:get("saved_wheels")) or {}
+    minetest.log('info', string.format('param=%s',param))
     wheels[param] = nil
     local anykeys = false
     for k,v in pairs(wheels) do
@@ -284,20 +285,33 @@ minetest.register_chatcommand("wheel_load", {
     end
 })
 
-local function wheel_list_formspec_get()
+local function wheel_list_formspec_get(name, index)
     local wheels = minetest.deserialize(
             modstorage:get("saved_wheels")) or {}
 
-    local result = ""
+    local list = ""
+    local first
+    local selected_idx
+    local index = index or 1
+    local selected_name = name
     for k,_ in pairs(wheels) do
         local key = k
         if key == "" then key = '<trundle wheel with no name>' end
         key = minetest.formspec_escape(key)
-        result = result .. key .. ","
+        if list == "" then first = key end
+        if key == name then
+            selected_idx = index
+            selected_name = key
+        end
+        list = list .. key .. ","
+        index = index + 1
     end
+
+    selected_idx = selected_idx or 1
+    selected_name = selected_name or ""
     
     -- trim trailing ','
-    return result:sub(1,-2)
+    return selected_idx, selected_name, list:sub(1,-2)
 end
 
 local formspectext = [=[
@@ -325,11 +339,11 @@ tooltip[paused;Whether your trundle wheel is paused. If it's paused, it will
 stop counting distance until you unpause it.]
 button[1,7;4,0.8;update;Update configuration]
 label[6.4,0.4;Saved wheels]
-field[6.4,1.2;4.2,0.8;wheel_name;Wheel name;]
+field[6.4,1.2;4.2,0.8;wheel_name;Wheel name;%s]
 tooltip[wheel_name;This is the name you will save your wheel to, which may
 override other existing wheels.]
 field_close_on_enter[wheel_name;false]
-textlist[6.4,2.2;5,4;wheel_list;%s;1;false]
+textlist[6.4,2.2;5,4;wheel_list;%s;%d;false]
 button[6.4,6.5;4,0.8;save;Save current wheel]
 tooltip[save;Save the current wheel with the above specified name. Overwrite
 any other wheel with that name.]
@@ -342,21 +356,34 @@ label[1,9.8;Loading will overwrite your current wheel!]
 label[1,10.3;Save your wheel before loading unless you want to discard it.]
 ]=]
 
+local function show_wheel_gui(_param, wheelname, index)
+    minetest.log('info', string.format("wheelname, index = %s, %s",
+                wheelname, index))
+    local selected_idx, selected_name, wheel_list = wheel_list_formspec_get(wheelname, index)
+    minetest.log('info', string.format("selected_idx, selected_name, wheel_list = %s, %s, %s",
+                selected_idx, selected_name, wheel_list))
+    if wheelname == "<trundle wheel with no name>" then
+        selected_name = ""
+    end
+    local formspectext =
+        string.format(formspectext,
+                rotationdist,
+                totaldist,
+                grandtotaldist,
+                tostring(vertical),
+                tostring(paused),
+                selected_name,
+                wheel_list,
+                selected_idx
+        )
+    minetest.log("info", string.format("Showing formspec result: %s", tostring(minetest.show_formspec("trundlewheel:wheel_gui", formspectext))))
+    minetest.log("info", formspectext)
+end
+
 minetest.register_chatcommand("wheel_gui", {
     params = "",
     description = "Open a GUI to configure your trundlewheel",
-    func = function(param)
-        local formspectext =
-            string.format(formspectext,
-                    rotationdist,
-                    totaldist,
-                    grandtotaldist,
-                    tostring(vertical),
-                    tostring(paused),
-                    wheel_list_formspec_get()
-            )
-        minetest.show_formspec("trundlewheel:wheel_gui", formspectext)
-    end
+    func = show_wheel_gui,
 })
 
 
@@ -387,9 +414,7 @@ fields = {
 }
 --]]
 
---TODO: Select sets wheel_name
---TODO: Save updates lists
---TODO: Delete wheel should update the list
+-- FORMSPEC HANDLER
 minetest.register_on_formspec_input(function(formname, fields)
     if formname ~= "trundlewheel:wheel_gui" then return end
 
@@ -397,8 +422,13 @@ minetest.register_on_formspec_input(function(formname, fields)
 
     -- Select
     if fields.wheel_list ~= nil then
-        local evt = minetest.explode_table_event(fields.wheel_list)
-        if evt.type ~= "CHG" then return end
+        minetest.log("info", "Select evt")
+        local evt = minetest.explode_textlist_event(fields.wheel_list)
+        minetest.log("info", dump(evt))
+        if evt.type ~= "CHG" then 
+            minetest.log("info", "Not a change event")
+            return
+        end
         local wheels = minetest.deserialize(
                 modstorage:get("saved_wheels")) or {}
 
@@ -409,29 +439,35 @@ minetest.register_on_formspec_input(function(formname, fields)
             if key == "" then key = '<trundle wheel with no name>' end
             key = minetest.formspec_escape(key)
             wheels_by_idx[idx] = key
+            idx = idx + 1
         end
 
         if wheels_by_idx == {} then
             -- No wheels anyway; do nothing
             minetest.log("info", "No wheels!")
+            return
         end
 
-        -- TODO: get list from storage, set wheel_name, (set selected index?)
+        minetest.log("info", string.format("evt.index = %s", evt.index))
+        minetest.log("info", string.format("wheels = %s", dump(wheels)))
+        minetest.log("info", string.format("wheels_by_idx = %s", dump(wheels_by_idx)))
+        show_wheel_gui(nil, wheels_by_idx[evt.index], evt.index)
+
         return
     end
 
     -- Enter keys
     local res
     if fields.key_enter ~= nil then
-        if key_enter_field == "totaldist" then
+        if fields.key_enter_field == "totaldist" then
             res = tonumber(fields.totaldist)
             if res and res > 0 and res < rotationdist then
                 totaldist = res
             end
-        elseif key_enter_field == "rotationdist" then
+        elseif fields.key_enter_field == "rotationdist" then
             res = tonumber(fields.rotationdist)
             if res and res >= 0 then rotationdist = res end
-        elseif key_enter_field == "grandtotaldist" then
+        elseif fields.key_enter_field == "grandtotaldist" then
             res = tonumber(fields.grandtotaldist)
             if res and res >= 0 then grandtotaldist = res end
         end
@@ -466,13 +502,22 @@ minetest.register_on_formspec_input(function(formname, fields)
         -- Vertical and paused: Already handled in their own events
         return
     elseif fields.save ~= nil then
+        if fields.wheel_name == "<trundle wheel with no name>" then
+            minetest.display_chat_message([=[
+Trying to save with that name would cause a lot of confusion! Please choose another name.
+            ]=])
+            return
+        end
         wheel_save(fields.wheel_name)
+        show_wheel_gui(nil, fields.wheel_name)
         return
     elseif fields.load ~= nil then
         wheel_load(fields.wheel_name)
+        show_wheel_gui(nil, fields.wheel_name)
         return
     elseif fields.delete ~= nil then
         wheel_delete(fields.wheel_name)
+        show_wheel_gui()
         return
     end
 
